@@ -1,0 +1,32 @@
+{
+  "name": "@tarmacagent/sdk",
+  "version": "0.1.0",
+  "description": "TypeScript SDK to test your on-chain agent against Tarmac: real Robinhood Chain data, isolated wallets, policy checks on every swap.",
+  "keywords": ["ai-agent", "agents", "onchain", "robinhood-chain", "uniswap", "defi", "testing", "sdk"],
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": { "types": "./dist/index.d.ts", "import": "./dist/index.js" },
+    "./types": { "types": "./dist/types.d.ts", "import": "./dist/types.js" }
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "sideEffects": false,
+  "engines": { "node": ">=18" },
+  "repository": { "type": "git", "url": "git+https://github.com/tarmacagent/tarmac-sdk-ts.git" },
+  "homepage": "https://github.com/tarmacagent/tarmac-sdk-ts#readme",
+  "bugs": "https://github.com/tarmacagent/tarmac-sdk-ts/issues",
+  "publishConfig": { "access": "public" },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "npm run typecheck && npm test && npm run build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "typescript": "5.9.3",
+    "vitest": "5.1.0"
+  }
+}
