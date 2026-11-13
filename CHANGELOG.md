@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.2.0
 
 - Automatic retries with exponential backoff (`retries`, `backoffMs` on `createTarmacClient`). Swap requests are never re-sent after a network failure.
 - Network failures now throw `TarmacToolError` with code `NETWORK_ERROR` instead of a raw `TypeError`.

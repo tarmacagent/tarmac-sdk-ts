@@ -1,6 +1,6 @@
 {
   "name": "@tarmacagent/sdk",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "TypeScript SDK to test your on-chain agent against Tarmac: real Robinhood Chain data, isolated wallets, policy checks on every swap.",
   "keywords": ["ai-agent", "agents", "onchain", "robinhood-chain", "uniswap", "defi", "testing", "sdk"],
   "license": "MIT",
