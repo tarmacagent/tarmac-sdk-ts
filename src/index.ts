@@ -57,11 +57,52 @@ export interface TarmacClientOptions {
   /** e.g. http://localhost:3000 */
   baseUrl: string;
   fetch?: typeof fetch;
+  /** How many times to retry a transient failure. Defaults to 2; 0 disables retries. */
+  retries?: number;
+  /** Base delay before the first retry, doubled each attempt. Defaults to 500 ms. */
+  backoffMs?: number;
 }
+
+/** Tools that only read state, so a network failure can be retried without side effects. */
+const READ_ONLY_TOOLS: ReadonlySet<ToolName> = new Set<ToolName>(["get_context", "get_balances", "get_quote"]);
+/** Statuses where the server rejected the request before doing any work. */
+const REJECTED_BEFORE_WORK = new Set([429, 503]);
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 export function createTarmacClient(options: TarmacClientOptions) {
   const base = options.baseUrl.replace(/\/$/, "");
-  const doFetch = options.fetch ?? fetch;
+  const rawFetch = options.fetch ?? fetch;
+  const retries = Math.max(0, options.retries ?? 2);
+  const backoffMs = Math.max(0, options.backoffMs ?? 500);
+
+  /**
+   * fetch with retries. A request the server rejected before doing any work (429/503 marked
+   * retryable) is always safe to retry. A network failure is retried only when `idempotent`:
+   * a swap request that timed out may already have run, so it is never sent twice.
+   */
+  async function doFetch(url: string, init: RequestInit = {}, idempotent = false): Promise<Response> {
+    for (let attempt = 0; ; attempt++) {
+      let res: Response;
+      try {
+        res = await rawFetch(url, init);
+      } catch (e) {
+        if (attempt < retries && idempotent) {
+          await sleep(backoffMs * 2 ** attempt);
+          continue;
+        }
+        throw new TarmacToolError("NETWORK_ERROR", e instanceof Error ? e.message : String(e), true);
+      }
+      if (attempt < retries && REJECTED_BEFORE_WORK.has(res.status)) {
+        const body = (await res.clone().json().catch(() => null)) as ToolErrorBody | null;
+        if (body?.error?.retryable) {
+          await sleep(backoffMs * 2 ** attempt);
+          continue;
+        }
+      }
+      return res;
+    }
+  }
 
   async function json<T>(res: Response): Promise<T> {
     const body = (await res.json().catch(() => null)) as unknown;
@@ -103,7 +144,7 @@ export function createTarmacClient(options: TarmacClientOptions) {
           method: "POST",
           headers: { "content-type": "application/json", ...auth },
           body: JSON.stringify(input ?? {}),
-        });
+        }, READ_ONLY_TOOLS.has(tool));
         return json(r);
       };
 
@@ -112,7 +153,7 @@ export function createTarmacClient(options: TarmacClientOptions) {
         runToken: token,
         runUrl,
         tools: toolsFromTransport(transport),
-        getRun: async () => (await json<{ run: RunView }>(await doFetch(`${base}/api/runs/${runId}`, { headers: auth }))).run,
+        getRun: async () => (await json<{ run: RunView }>(await doFetch(`${base}/api/runs/${runId}`, { headers: auth }, true))).run,
       };
   }
 }

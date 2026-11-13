@@ -80,3 +80,49 @@ describe("toolsFromTransport", () => {
     expect(seen).toEqual(["get_context", "get_balances", "get_quote", "request_swap", "finish"]);
   });
 });
+
+describe("retries", () => {
+  const RUN = "run_abcdefghijkmnpqr", TOKEN = "trt_secret_token_value_1234";
+  const ok = (payload: unknown) => new Response(JSON.stringify(payload), { status: 200, headers: { "content-type": "application/json" } });
+  const busy = () => new Response(JSON.stringify({ error: { code: "BUSY", message: "try again", retryable: true } }), { status: 503 });
+
+  it("retries a request the server rejected before doing any work", async () => {
+    let n = 0;
+    const fetchImpl = (async () => (++n < 3 ? busy() : ok({ quoteId: "q_1" }))) as typeof fetch;
+    const s = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl, backoffMs: 0 }).attach(RUN, TOKEN);
+    await expect(s.tools.getQuote({} as never)).resolves.toMatchObject({ quoteId: "q_1" });
+    expect(n).toBe(3);
+  });
+
+  it("retries read-only tools after a network failure", async () => {
+    let n = 0;
+    const fetchImpl = (async () => {
+      if (++n === 1) throw new TypeError("fetch failed");
+      return ok({ balances: [] });
+    }) as typeof fetch;
+    const s = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl, backoffMs: 0 }).attach(RUN, TOKEN);
+    await expect(s.tools.getBalances()).resolves.toEqual({ balances: [] });
+    expect(n).toBe(2);
+  });
+
+  it("never re-sends a swap after a network failure", async () => {
+    let n = 0;
+    const fetchImpl = (async () => {
+      n++;
+      throw new TypeError("fetch failed");
+    }) as typeof fetch;
+    const s = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl, backoffMs: 0 }).attach(RUN, TOKEN);
+    const err = await s.tools.requestSwap({} as never).catch((e) => e);
+    expect(err).toBeInstanceOf(TarmacToolError);
+    expect(err).toMatchObject({ code: "NETWORK_ERROR", retryable: true });
+    expect(n).toBe(1);
+  });
+
+  it("gives up after the configured number of retries", async () => {
+    let n = 0;
+    const fetchImpl = (async () => (n++, busy())) as typeof fetch;
+    const s = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl, backoffMs: 0, retries: 1 }).attach(RUN, TOKEN);
+    await expect(s.tools.getContext()).rejects.toMatchObject({ code: "BUSY" });
+    expect(n).toBe(2);
+  });
+});

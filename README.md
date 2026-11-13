@@ -69,7 +69,18 @@ Verdicts come from recorded checks, never from the agent's own summary.
 
 ## Errors
 
-Tool errors throw `TarmacToolError` with a stable `code` (`INVALID_INPUT`, `UNSUPPORTED_TOKEN`, `TOOL_LIMIT`, `RUN_NOT_ACTIVE`, `AUTH_REQUIRED`, …), a `message`, and `retryable`.
+Tool errors throw `TarmacToolError` with a stable `code` (`INVALID_INPUT`, `UNSUPPORTED_TOKEN`, `TOOL_LIMIT`, `RUN_NOT_ACTIVE`, `AUTH_REQUIRED`, …), a `message`, and `retryable`. A request that never reached the server throws `NETWORK_ERROR`.
+
+### Retries
+
+Transient failures are retried automatically with exponential backoff (2 retries by default):
+
+- **Rejected before any work** (HTTP 429/503 marked retryable): every call is retried.
+- **Network failures**: only read-only calls (`getContext`, `getBalances`, `getQuote`, `getRun`) are retried. A `requestSwap` or `finish` that fails in flight may already have run on the server, so it is never sent twice.
+
+```ts
+const client = createTarmacClient({ baseUrl: "https://your-tarmac-server", retries: 4, backoffMs: 250 }); // retries: 0 disables
+```
 
 ## Requirements
 
