@@ -130,6 +130,20 @@ export function createTarmacClient(options: TarmacClientOptions) {
       return session(created.run.id, created.runToken, `${base}${created.runUrl}`);
     },
 
+    /** Server status from `GET /api/health`: which run modes are available and whether runs persist. */
+    async health(): Promise<HealthStatus> {
+      return json<HealthStatus>(await doFetch(`${base}/api/health`, {}, true));
+    },
+
+    /** Attach using `TARMAC_RUN_ID` and `TARMAC_RUN_TOKEN` (from "Your agent" in the Tarmac app). */
+    attachFromEnv(env: Record<string, string | undefined> = processEnv()): RunSession {
+      const runId = env.TARMAC_RUN_ID, runToken = env.TARMAC_RUN_TOKEN;
+      if (!runId || !runToken) {
+        throw new TarmacToolError("AUTH_REQUIRED", 'Set TARMAC_RUN_ID and TARMAC_RUN_TOKEN (create the run in the app with "Your agent").', false);
+      }
+      return session(runId, runToken, `${base}/runs/${runId}#token=${runToken}`);
+    },
+
     /** Attach to a run created elsewhere (e.g. "Your agent" in the Tarmac app) using its run credential. */
     attach(runId: string, runToken: string): RunSession {
       return session(runId, runToken, `${base}/runs/${runId}#token=${runToken}`);
@@ -159,6 +173,24 @@ export function createTarmacClient(options: TarmacClientOptions) {
 }
 
 export type TarmacClient = ReturnType<typeof createTarmacClient>;
+
+export interface HealthStatus {
+  ok: boolean;
+  /** False when runs live on a single server instance only. */
+  persistent?: boolean;
+  modes?: Record<string, { available: boolean }>;
+  [key: string]: unknown;
+}
+
+function processEnv(): Record<string, string | undefined> {
+  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env ?? {};
+}
+
+/** Client for `TARMAC_URL` (default `http://localhost:3000`). Other options pass through. */
+export function createTarmacClientFromEnv(options: Omit<TarmacClientOptions, "baseUrl"> & { env?: Record<string, string | undefined> } = {}) {
+  const { env = processEnv(), ...rest } = options;
+  return createTarmacClient({ ...rest, baseUrl: env.TARMAC_URL || "http://localhost:3000" });
+}
 
 /**
  * Convenience wrapper: start a run, hand the tools to your agent, and make sure

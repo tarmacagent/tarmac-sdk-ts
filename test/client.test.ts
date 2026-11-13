@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { TarmacToolError, createTarmacClient, runAgent, toolsFromTransport } from "../src/index.ts";
+import { TarmacToolError, createTarmacClient, createTarmacClientFromEnv, runAgent, toolsFromTransport } from "../src/index.ts";
 
 type Call = { url: string; method: string; headers: Record<string, string>; body: unknown };
 
@@ -124,5 +124,33 @@ describe("retries", () => {
     const s = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl, backoffMs: 0, retries: 1 }).attach(RUN, TOKEN);
     await expect(s.tools.getContext()).rejects.toMatchObject({ code: "BUSY" });
     expect(n).toBe(2);
+  });
+});
+
+describe("environment and health", () => {
+  const health = { ok: true, persistent: true, modes: { fixture: { available: true }, fork: { available: false } } };
+  const fetchImpl = (async (input: RequestInfo | URL) => {
+    const url = String(input);
+    return new Response(JSON.stringify(url.endsWith("/api/health") ? health : { ok: true }), { status: 200 });
+  }) as typeof fetch;
+
+  it("reads TARMAC_URL, defaulting to localhost", async () => {
+    const seen: string[] = [];
+    const spy = (async (input: RequestInfo | URL) => (seen.push(String(input)), new Response(JSON.stringify(health)))) as typeof fetch;
+    await createTarmacClientFromEnv({ fetch: spy, env: { TARMAC_URL: "https://tarmac.example/" } }).health();
+    await createTarmacClientFromEnv({ fetch: spy, env: {} }).health();
+    expect(seen).toEqual(["https://tarmac.example/api/health", "http://localhost:3000/api/health"]);
+  });
+
+  it("attaches from TARMAC_RUN_ID and TARMAC_RUN_TOKEN", () => {
+    const client = createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl });
+    const s = client.attachFromEnv({ TARMAC_RUN_ID: "run_abcdefghijkmnpqr", TARMAC_RUN_TOKEN: "trt_secret_token_value_1234" });
+    expect(s.runId).toBe("run_abcdefghijkmnpqr");
+    expect(() => client.attachFromEnv({})).toThrow(TarmacToolError);
+  });
+
+  it("returns server health", async () => {
+    const h = await createTarmacClient({ baseUrl: "http://tarmac.test", fetch: fetchImpl }).health();
+    expect(h.modes?.fixture?.available).toBe(true);
   });
 });

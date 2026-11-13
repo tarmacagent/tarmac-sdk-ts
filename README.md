@@ -46,6 +46,21 @@ If the Tarmac server requires login, create the run in the app (**Run → Your a
 await runAgent(client, { runId: process.env.TARMAC_RUN_ID!, runToken: process.env.TARMAC_RUN_TOKEN! }, myAgent);
 ```
 
+### From environment variables
+
+```ts
+import { createTarmacClientFromEnv } from "@tarmacagent/sdk";
+
+const client = createTarmacClientFromEnv();  // $TARMAC_URL, default http://localhost:3000
+const session = client.attachFromEnv();      // $TARMAC_RUN_ID + $TARMAC_RUN_TOKEN
+```
+
+### Check your setup
+
+```ts
+const { ok, modes } = await client.health(); // { fixture: { available: true }, fork: { available: … } }
+```
+
 ## Tools
 
 | Tool | Input | Returns |
